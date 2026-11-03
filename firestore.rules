@@ -1,0 +1,43 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    match /recipes/{recipeId} {
+      // Must be authenticated
+      function isAuthenticated() {
+        return request.auth != null;
+      }
+
+      // Check valid recipe fields and constraints
+      function isValidRecipe(data) {
+        return data.userId is string
+          && data.userId == request.auth.uid
+          && data.name is string
+          && data.name.trim().size() > 0
+          && data.name.size() <= 80
+          && data.category in ['Breakfast', 'Lunch', 'Dinner', 'Dessert']
+          && data.difficulty in ['Easy', 'Medium', 'Hard']
+          && data.cookTime is int
+          && data.cookTime >= 1
+          && data.cookTime <= 600
+          && (!('servings' in data) || data.servings == null || (data.servings is int && data.servings >= 1 && data.servings <= 20))
+          && (!('notes' in data) || data.notes == null || (data.notes is string && data.notes.size() <= 300));
+      }
+
+      // Read: logged-in user can only read their own recipes
+      allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
+
+      // Create: logged-in user can only create recipes for themselves with valid data
+      allow create: if isAuthenticated() && isValidRecipe(request.resource.data);
+
+      // Update: logged-in user can only update their own recipes with valid data, userId cannot be changed
+      allow update: if isAuthenticated() 
+                    && resource.data.userId == request.auth.uid
+                    && request.resource.data.userId == request.auth.uid
+                    && isValidRecipe(request.resource.data);
+
+      // Delete: logged-in user can only delete their own recipes
+      allow delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
+    }
+  }
+}
